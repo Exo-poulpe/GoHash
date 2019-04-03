@@ -6,7 +6,6 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
-	"flag"
 	"fmt"
 	"hash"
 	"os"
@@ -15,21 +14,21 @@ import (
 	"sync"
 	"time"
 
+	"github.com/integrii/flaggy"
+
 	"github.com/shirou/gopsutil/mem"
 
 	"github.com/shirou/gopsutil/cpu"
 )
 
 var (
-	hasher      string
-	wordlist    string
-	hashMethods int
-	verbose     bool
-	Vverbose    bool
-	Benchmark   bool
-	InfoHw      bool
-	HelpFlag    bool
-	err         error
+	target       string
+	wordlistFile string
+	method       uint
+
+	benchmark bool
+	check     bool
+	verbose   bool
 
 	wg         sync.WaitGroup
 	hashFind   string
@@ -38,14 +37,23 @@ var (
 )
 
 func init() {
-	flag.StringVar(&hasher, "H", "", "Hash to test")
-	flag.BoolVar(&HelpFlag, "h", false, "Show this help")
-	flag.StringVar(&wordlist, "w", "", "Wordlist for hash generating")
-	flag.BoolVar(&verbose, "v", false, "Verbose program")
-	flag.BoolVar(&Vverbose, "vv", false, "More more verbose program")
-	flag.BoolVar(&Benchmark, "b", false, "Benchmark mode")
-	flag.BoolVar(&InfoHw, "I", false, "Info hardware")
-	flag.IntVar(&hashMethods, "m", 0, "Hash methods\n1 \t: MD5\n2 \t: SHA1\n3 \t: SHA256\n")
+
+	flaggy.SetName("GoHash")
+	flaggy.SetDescription("GoHash can test hash with wordlist")
+	flaggy.SetVersion("0.0.0.2")
+
+	flaggy.String(&target, "t", "target", "Set hash to test")
+	flaggy.String(&wordlistFile, "f", "file", "Set worlist to use for test")
+	flaggy.UInt(&method, "m", "method", "Set method for hash word in wordlist")
+	flaggy.Bool(&benchmark, "b", "benchmark", "More verbose output")
+
+	// flag.BoolVar(&HelpFlag, "h", false, "Show this help")
+	// flag.StringVar(&wordlist, "w", "", "Wordlist for hash generating")
+	// flag.BoolVar(&verbose, "v", false, "Verbose program")
+	// flag.BoolVar(&Vverbose, "vv", false, "More more verbose program")
+	// flag.BoolVar(&Benchmark, "b", false, "Benchmark mode")
+	// flag.BoolVar(&InfoHw, "I", false, "Info hardware")
+	// flag.IntVar(&hashMethods, "m", 0, "Hash methods\n1 \t: MD5\n2 \t: SHA1\n3 \t: SHA256\n")
 
 }
 
@@ -59,30 +67,36 @@ const (
 
 func main() {
 
-	flag.Parse()
+	flaggy.Parse()
 
-	if Benchmark == true {
-		BenchHash(hashMethods)
-		os.Exit(0)
-	} else if InfoHw == true {
-		InfoHardWare()
-		os.Exit(0)
-	} else if HelpFlag == true {
-		flag.Usage()
-		os.Exit(0)
-	}
-	if hasher == "" || hashMethods == 0 || hashMethods > 3 {
-		flag.Usage()
-		os.Exit(0)
+	if len(os.Args) == 1 {
+		flaggy.ShowHelpAndExit("")
 	}
 
-	hashToFind = strings.ToLower(hasher)
+	if benchmark == true {
+		BenchHash(method)
+		os.Exit(0)
+	}
+	// else if InfoHw == true {
+	// 	InfoHardWare()
+	// 	os.Exit(0)
+	// } else if HelpFlag == true {
+	// 	flag.Usage()
+	// 	os.Exit(0)
+	// }
+
+	// if flag.NArg() == 0 {
+	// 	flag.Usage()
+	// 	os.Exit(0)
+	// }
+
+	hashToFind = strings.ToLower(target)
 
 	wg.Add(1)
 	start := time.Now()
-	fmt.Printf("Hash mode %s\n", GetHashName(hashMethods))
+	fmt.Printf("Hash mode %s\n", GetHashName(method))
 
-	go ReadWordListFile(wordlist)
+	go ReadWordListFile(wordlistFile)
 
 	wg.Wait()
 
@@ -96,10 +110,10 @@ func main() {
 
 func ReadWordListFile(wordlits string) {
 	defer wg.Done()
-	f, _ := os.Open(wordlist)
+	f, _ := os.Open(wordlistFile)
 	scanner := bufio.NewScanner(f)
 
-	hasher := GetHash(hashMethods)
+	hasher := GetHash(method)
 
 	var line string
 	var result string
@@ -109,16 +123,11 @@ func ReadWordListFile(wordlits string) {
 		line = scanner.Text()
 		hasher.Write([]byte(line))
 		result = hex.EncodeToString(hasher.Sum(nil))
-		count++
-		if Vverbose == true {
-			fmt.Printf("Password : %s \t hash : %s\n", line, result)
-		}
 		if result == hashToFind {
 			hashFind = "hash found : " + line
 			found = true
 		}
 		hasher.Reset()
-
 	}
 
 	if found == false {
@@ -128,7 +137,7 @@ func ReadWordListFile(wordlits string) {
 }
 
 // GetHash func
-func GetHash(choice int) hash.Hash {
+func GetHash(choice uint) hash.Hash {
 
 	switch choice {
 	case 1:
@@ -146,7 +155,7 @@ func GetHash(choice int) hash.Hash {
 }
 
 // GetHashName func
-func GetHashName(choice int) string {
+func GetHashName(choice uint) string {
 	switch choice {
 	case 1:
 		tmp := "md5"
@@ -162,7 +171,7 @@ func GetHashName(choice int) string {
 	return ""
 }
 
-func BenchHash(choice int) {
+func BenchHash(choice uint) {
 
 	start := time.Now()
 	var hasher hash.Hash
